@@ -49,6 +49,8 @@ COPY examples /opt/spark/examples
 COPY ${k8s_tests} /opt/spark/tests
 COPY data /opt/spark/data
 
+RUN chmod +x /opt/entrypoint.sh
+
 ENV SPARK_HOME /opt/spark
 
 WORKDIR /opt/spark/work-dir
