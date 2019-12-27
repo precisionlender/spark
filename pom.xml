@@ -291,6 +291,18 @@
          This is needed by the scalatest plugin, and so is declared here to be available in
          all child modules, just as scalatest is run in all children
     -->
+    <!-- https://mvnrepository.com/artifact/org.apache.hadoop/hadoop-azure-datalake -->
+    <dependency>
+      <groupId>org.apache.hadoop</groupId>
+      <artifactId>hadoop-azure-datalake</artifactId>
+      <version>3.2.1</version>
+    </dependency>
+    <!-- https://mvnrepository.com/artifact/org.apache.hadoop/hadoop-azure -->
+    <dependency>
+      <groupId>org.apache.hadoop</groupId>
+      <artifactId>hadoop-azure</artifactId>
+      <version>3.2.1</version>
+    </dependency>
     <dependency>
       <groupId>org.scalatest</groupId>
       <artifactId>scalatest_${scala.binary.version}</artifactId>
