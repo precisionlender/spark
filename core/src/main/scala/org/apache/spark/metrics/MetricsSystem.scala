@@ -110,6 +110,7 @@ private[spark] class MetricsSystem private (
   def stop(): Unit = {
     if (running) {
       sinks.foreach(_.stop)
+      registry.removeMatching((_: String, _: Metric) => true)
     } else {
       logWarning("Stopping a MetricsSystem that is not running")
     }
@@ -155,7 +156,7 @@ private[spark] class MetricsSystem private (
   }
 
   def getSourcesByName(sourceName: String): Seq[Source] =
-    sources.filter(_.sourceName == sourceName)
+    sources.filter(_.sourceName == sourceName).toSeq
 
   def registerSource(source: Source): Unit = {
     sources += source

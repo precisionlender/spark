@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 #
 # Licensed to the Apache Software Foundation (ASF) under one or more
@@ -17,7 +17,6 @@
 # limitations under the License.
 #
 
-from __future__ import print_function
 import logging
 from argparse import ArgumentParser
 import os
@@ -29,10 +28,7 @@ import tempfile
 from threading import Thread, Lock
 import time
 import uuid
-if sys.version < '3':
-    import Queue
-else:
-    import queue as Queue
+import queue as Queue
 from multiprocessing import Manager
 
 
@@ -75,7 +71,7 @@ def run_individual_python_test(target_dir, test_name, pyspark_python):
         'SPARK_TESTING': '1',
         'SPARK_PREPEND_CLASSES': '1',
         'PYSPARK_PYTHON': which(pyspark_python),
-        'PYSPARK_DRIVER_PYTHON': which(pyspark_python)
+        'PYSPARK_DRIVER_PYTHON': which(pyspark_python),
     })
 
     # Create a unique temp directory under 'target/' for each run. The TMPDIR variable is
@@ -87,9 +83,10 @@ def run_individual_python_test(target_dir, test_name, pyspark_python):
     env["TMPDIR"] = tmp_dir
 
     # Also override the JVM's temp directory by setting driver and executor options.
+    java_options = "-Djava.io.tmpdir={0} -Dio.netty.tryReflectionSetAccessible=true".format(tmp_dir)
     spark_args = [
-        "--conf", "spark.driver.extraJavaOptions=-Djava.io.tmpdir={0}".format(tmp_dir),
-        "--conf", "spark.executor.extraJavaOptions=-Djava.io.tmpdir={0}".format(tmp_dir),
+        "--conf", "spark.driver.extraJavaOptions='{0}'".format(java_options),
+        "--conf", "spark.executor.extraJavaOptions='{0}'".format(java_options),
         "pyspark-shell"
     ]
     env["PYSPARK_SUBMIT_ARGS"] = " ".join(spark_args)
@@ -160,11 +157,15 @@ def run_individual_python_test(target_dir, test_name, pyspark_python):
 
 
 def get_default_python_executables():
-    python_execs = [x for x in ["python2.7", "python3.6", "pypy"] if which(x)]
-    if "python2.7" not in python_execs:
-        LOGGER.warning("Not testing against `python2.7` because it could not be found; falling"
-                       " back to `python` instead")
-        python_execs.insert(0, "python")
+    python_execs = [x for x in ["python3.6", "python3.8", "pypy3"] if which(x)]
+
+    if "python3.6" not in python_execs:
+        p = which("python3")
+        if not p:
+            LOGGER.error("No python3 executable found.  Exiting!")
+            os._exit(1)
+        else:
+            python_execs.insert(0, p)
     return python_execs
 
 
@@ -262,12 +263,12 @@ def main():
         python_implementation = subprocess_check_output(
             [python_exec, "-c", "import platform; print(platform.python_implementation())"],
             universal_newlines=True).strip()
-        LOGGER.debug("%s python_implementation is %s", python_exec, python_implementation)
-        LOGGER.debug("%s version is: %s", python_exec, subprocess_check_output(
+        LOGGER.info("%s python_implementation is %s", python_exec, python_implementation)
+        LOGGER.info("%s version is: %s", python_exec, subprocess_check_output(
             [python_exec, "--version"], stderr=subprocess.STDOUT, universal_newlines=True).strip())
         if should_test_modules:
             for module in modules_to_test:
-                if python_implementation not in module.blacklisted_python_implementations:
+                if python_implementation not in module.excluded_python_implementations:
                     for test_goal in module.python_test_goals:
                         heavy_tests = ['pyspark.streaming.tests', 'pyspark.mllib.tests',
                                        'pyspark.tests', 'pyspark.sql.tests', 'pyspark.ml.tests']

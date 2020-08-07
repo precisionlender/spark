@@ -34,6 +34,7 @@ import org.mockito.ArgumentCaptor
 import org.mockito.ArgumentMatchers.{any, anyLong, eq => meq}
 import org.mockito.Mockito.{times, verify, when}
 import org.scalatest.{BeforeAndAfter, BeforeAndAfterEach, PrivateMethodTester}
+import org.scalatest.Assertions._
 import org.scalatest.concurrent.Eventually
 import org.scalatest.concurrent.Eventually._
 import org.scalatestplus.mockito.MockitoSugar
@@ -611,7 +612,7 @@ object WriteAheadLogSuite {
       }
     }
     writer.close()
-    segments
+    segments.toSeq
   }
 
   /**
@@ -684,7 +685,7 @@ object WriteAheadLogSuite {
     } finally {
       reader.close()
     }
-    buffer
+    buffer.toSeq
   }
 
   /** Read all the data from a log file using reader class and return the list of byte buffers. */

@@ -39,8 +39,8 @@ class SorterSuite extends SparkFunSuite with Logging {
     new Sorter(new KeyReuseIntArraySortDataFormat)
       .sort(data2, 0, data2.length, Ordering[IntWrapper])
 
-    assert(data0.view === data1.view)
-    assert(data0.view === data2.view)
+    assert(data0 === data1)
+    assert(data0 === data2)
   }
 
   test("KVArraySorter") {
@@ -59,7 +59,7 @@ class SorterSuite extends SparkFunSuite with Logging {
 
     Arrays.sort(keys)
     new Sorter(new KVArraySortDataFormat[Double, Number])
-      .sort(keyValueArray, 0, keys.length, Ordering.Double)
+      .sort(keyValueArray, 0, keys.length, (x, y) => java.lang.Double.compare(x, y))
 
     keys.zipWithIndex.foreach { case (k, i) =>
       assert(k === keyValueArray(2 * i))

@@ -60,7 +60,6 @@ private[feature] trait RFormulaBase extends HasFeaturesCol with HasLabelCol with
   @Since("2.1.0")
   val forceIndexLabel: BooleanParam = new BooleanParam(this, "forceIndexLabel",
     "Force to index label whether it is numeric or string")
-  setDefault(forceIndexLabel -> false)
 
   /** @group getParam */
   @Since("2.1.0")
@@ -80,7 +79,6 @@ private[feature] trait RFormulaBase extends HasFeaturesCol with HasLabelCol with
     "type. Options are 'skip' (filter out rows with invalid data), error (throw an error), " +
     "or 'keep' (put invalid data in a special additional bucket, at index numLabels).",
     ParamValidators.inArray(StringIndexer.supportedHandleInvalids))
-  setDefault(handleInvalid, StringIndexer.ERROR_INVALID)
 
   /**
    * Param for how to order categories of a string FEATURE column used by `StringIndexer`.
@@ -113,11 +111,13 @@ private[feature] trait RFormulaBase extends HasFeaturesCol with HasLabelCol with
     "The default value is 'frequencyDesc'. When the ordering is set to 'alphabetDesc', " +
     "RFormula drops the same category as R when encoding strings.",
     ParamValidators.inArray(StringIndexer.supportedStringOrderType))
-  setDefault(stringIndexerOrderType, StringIndexer.frequencyDesc)
 
   /** @group getParam */
   @Since("2.3.0")
   def getStringIndexerOrderType: String = $(stringIndexerOrderType)
+
+  setDefault(forceIndexLabel -> false, handleInvalid -> StringIndexer.ERROR_INVALID,
+    stringIndexerOrderType -> StringIndexer.frequencyDesc)
 
   protected def hasLabelCol(schema: StructType): Boolean = {
     schema.map(_.name).contains($(labelCol))
@@ -320,7 +320,10 @@ class RFormula @Since("1.5.0") (@Since("1.5.0") override val uid: String)
   override def copy(extra: ParamMap): RFormula = defaultCopy(extra)
 
   @Since("2.0.0")
-  override def toString: String = s"RFormula(${get(formula).getOrElse("")}) (uid=$uid)"
+  override def toString: String = {
+    s"RFormula: uid=$uid" +
+      get(formula).map(f => s", formula = $f").getOrElse("")
+  }
 }
 
 @Since("2.0.0")
@@ -376,7 +379,9 @@ class RFormulaModel private[feature](
   }
 
   @Since("2.0.0")
-  override def toString: String = s"RFormulaModel($resolvedFormula) (uid=$uid)"
+  override def toString: String = {
+    s"RFormulaModel: uid=$uid, resolvedFormula=$resolvedFormula"
+  }
 
   private def transformLabel(dataset: Dataset[_]): DataFrame = {
     val labelName = resolvedFormula.label

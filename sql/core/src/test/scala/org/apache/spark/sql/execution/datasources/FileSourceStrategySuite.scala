@@ -31,12 +31,13 @@ import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.catalog.BucketSpec
 import org.apache.spark.sql.catalyst.expressions.{Expression, ExpressionSet, PredicateHelper}
 import org.apache.spark.sql.catalyst.util
-import org.apache.spark.sql.execution.{DataSourceScanExec, SparkPlan}
+import org.apache.spark.sql.execution.{DataSourceScanExec, FileSourceScanExec, SparkPlan}
+import org.apache.spark.sql.execution.datasources.v2.DataSourceV2ScanRelation
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.sql.sources._
 import org.apache.spark.sql.test.SharedSparkSession
-import org.apache.spark.sql.types.{IntegerType, StructType}
+import org.apache.spark.sql.types.{IntegerType, LongType, StructField, StructType}
 import org.apache.spark.util.Utils
 
 class FileSourceStrategySuite extends QueryTest with SharedSparkSession with PredicateHelper {
@@ -494,6 +495,71 @@ class FileSourceStrategySuite extends QueryTest with SharedSparkSession with Pre
       val readBack = spark.read.parquet(path).filter($"_1" === "true")
       val filtered = ds.filter($"_1" === "true").toDF()
       checkAnswer(readBack, filtered)
+    }
+  }
+
+  test("SPARK-29768: Column pruning through non-deterministic expressions") {
+    withSQLConf(SQLConf.USE_V1_SOURCE_LIST.key -> "parquet") {
+      withTempPath { path =>
+        spark.range(10)
+          .selectExpr("id as key", "id * 3 as s1", "id * 5 as s2")
+          .write.format("parquet").save(path.getAbsolutePath)
+        val df1 = spark.read.parquet(path.getAbsolutePath)
+        val df2 = df1.selectExpr("key", "rand()").where("key > 5")
+        val plan = df2.queryExecution.sparkPlan
+        val scan = plan.collect { case scan: FileSourceScanExec => scan }
+        assert(scan.size === 1)
+        assert(scan.head.requiredSchema == StructType(StructField("key", LongType) :: Nil))
+      }
+    }
+
+    withSQLConf(SQLConf.USE_V1_SOURCE_LIST.key -> "") {
+      withTempPath { path =>
+        spark.range(10)
+          .selectExpr("id as key", "id * 3 as s1", "id * 5 as s2")
+          .write.format("parquet").save(path.getAbsolutePath)
+        val df1 = spark.read.parquet(path.getAbsolutePath)
+        val df2 = df1.selectExpr("key", "rand()").where("key > 5")
+        val plan = df2.queryExecution.optimizedPlan
+        val scan = plan.collect { case r: DataSourceV2ScanRelation => r }
+        assert(scan.size === 1)
+        assert(scan.head.scan.readSchema() == StructType(StructField("key", LongType) :: Nil))
+      }
+    }
+  }
+
+  test("SPARK-32019: Add spark.sql.files.minPartitionNum config") {
+    withSQLConf(SQLConf.FILES_MIN_PARTITION_NUM.key -> "1") {
+      val table =
+        createTable(files = Seq(
+          "file1" -> 1,
+          "file2" -> 1,
+          "file3" -> 1
+        ))
+      assert(table.rdd.partitions.length == 1)
+    }
+
+    withSQLConf(SQLConf.FILES_MIN_PARTITION_NUM.key -> "10") {
+      val table =
+        createTable(files = Seq(
+          "file1" -> 1,
+          "file2" -> 1,
+          "file3" -> 1
+        ))
+      assert(table.rdd.partitions.length == 3)
+    }
+
+    withSQLConf(SQLConf.FILES_MIN_PARTITION_NUM.key -> "16") {
+      val partitions = (1 to 100).map(i => s"file$i" -> 128 * 1024 * 1024)
+      val table = createTable(files = partitions)
+      // partition is limited by filesMaxPartitionBytes(128MB)
+      assert(table.rdd.partitions.length == 100)
+    }
+
+    withSQLConf(SQLConf.FILES_MIN_PARTITION_NUM.key -> "32") {
+      val partitions = (1 to 800).map(i => s"file$i" -> 4 * 1024 * 1024)
+      val table = createTable(files = partitions)
+      assert(table.rdd.partitions.length == 50)
     }
   }
 

@@ -227,6 +227,7 @@ public class UTF8StringSuite {
   @Test
   public void trims() {
     assertEquals(fromString("1"), fromString("1").trim());
+    assertEquals(fromString("1"), fromString("1\t").trimAll());
 
     assertEquals(fromString("hello"), fromString("  hello ").trim());
     assertEquals(fromString("hello "), fromString("  hello ").trimLeft());
@@ -389,6 +390,10 @@ public class UTF8StringSuite {
     assertEquals(fromString("example"), e.substringSQL(0, Integer.MAX_VALUE));
     assertEquals(fromString("example"), e.substringSQL(1, Integer.MAX_VALUE));
     assertEquals(fromString("xample"), e.substringSQL(2, Integer.MAX_VALUE));
+    assertEquals(EMPTY_UTF8, e.substringSQL(-100, -100));
+    assertEquals(EMPTY_UTF8, e.substringSQL(-1207959552, -1207959552));
+    assertEquals(fromString("pl"), e.substringSQL(-3, 2));
+    assertEquals(EMPTY_UTF8, e.substringSQL(Integer.MIN_VALUE, 6));
   }
 
   @Test

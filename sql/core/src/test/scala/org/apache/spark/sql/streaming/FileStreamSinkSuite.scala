@@ -210,7 +210,7 @@ abstract class FileStreamSinkSuite extends StreamTest {
     val inputData = MemoryStream[Long]
     val inputDF = inputData.toDF.toDF("time")
     val outputDf = inputDF
-      .selectExpr("CAST(time AS timestamp) AS timestamp")
+      .selectExpr("timestamp_seconds(time) AS timestamp")
       .withWatermark("timestamp", "10 seconds")
       .groupBy(window($"timestamp", "5 seconds"))
       .count()
@@ -525,6 +525,56 @@ abstract class FileStreamSinkSuite extends StreamTest {
       }
     }
   }
+
+  test("Handle FileStreamSink metadata correctly for empty partition") {
+    Seq("parquet", "orc", "text", "json").foreach { format =>
+      val inputData = MemoryStream[String]
+      val df = inputData.toDF()
+
+      withTempDir { outputDir =>
+        withTempDir { checkpointDir =>
+          var query: StreamingQuery = null
+          try {
+            // repartition to more than the input to leave empty partitions
+            query =
+              df.repartition(10)
+                .writeStream
+                .option("checkpointLocation", checkpointDir.getCanonicalPath)
+                .format(format)
+                .start(outputDir.getCanonicalPath)
+
+            inputData.addData("1", "2", "3")
+            inputData.addData("4", "5")
+
+            failAfter(streamingTimeout) {
+              query.processAllAvailable()
+            }
+          } finally {
+            if (query != null) {
+              query.stop()
+            }
+          }
+
+          val outputDirPath = new Path(outputDir.getCanonicalPath)
+          val hadoopConf = spark.sessionState.newHadoopConf()
+          val fs = outputDirPath.getFileSystem(hadoopConf)
+          val logPath = FileStreamSink.getMetadataLogPath(fs, outputDirPath, conf)
+
+          val sinkLog = new FileStreamSinkLog(FileStreamSinkLog.VERSION, spark, logPath.toString)
+
+          val allFiles = sinkLog.allFiles()
+          // only files from non-empty partition should be logged
+          assert(allFiles.length < 10)
+          assert(allFiles.forall(file => fs.exists(new Path(file.path))))
+
+          // the query should be able to read all rows correctly with metadata log
+          val outputDf = spark.read.format(format).load(outputDir.getCanonicalPath)
+            .selectExpr("CAST(value AS INT)").as[Int]
+          checkDatasetUnorderly(outputDf, 1, 2, 3, 4, 5)
+        }
+      }
+    }
+  }
 }
 
 object PendingCommitFilesTrackingManifestFileCommitProtocol {
@@ -609,7 +659,7 @@ class FileStreamSinkV2Suite extends FileStreamSinkSuite {
     // Verify that MetadataLogFileIndex is being used and the correct partitioning schema has
     // been inferred
     val table = df.queryExecution.analyzed.collect {
-      case DataSourceV2Relation(table: FileTable, _, _) => table
+      case DataSourceV2Relation(table: FileTable, _, _, _, _) => table
     }
     assert(table.size === 1)
     assert(table.head.fileIndex.isInstanceOf[MetadataLogFileIndex])

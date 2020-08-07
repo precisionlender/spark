@@ -56,8 +56,6 @@ private[feature] trait StringIndexerBase extends Params with HasHandleInvalid wi
     "or 'keep' (put invalid data in a special additional bucket, at index numLabels).",
     ParamValidators.inArray(StringIndexer.supportedHandleInvalids))
 
-  setDefault(handleInvalid, StringIndexer.ERROR_INVALID)
-
   /**
    * Param for how to order labels of string column. The first label after ordering is assigned
    * an index of 0.
@@ -79,6 +77,9 @@ private[feature] trait StringIndexerBase extends Params with HasHandleInvalid wi
     "The first label after ordering is assigned an index of 0. " +
     s"Supported options: ${StringIndexer.supportedStringOrderType.mkString(", ")}.",
     ParamValidators.inArray(StringIndexer.supportedStringOrderType))
+
+  setDefault(handleInvalid -> StringIndexer.ERROR_INVALID,
+    stringOrderType -> StringIndexer.frequencyDesc)
 
   /** @group getParam */
   @Since("2.3.0")
@@ -107,7 +108,7 @@ private[feature] trait StringIndexerBase extends Params with HasHandleInvalid wi
         s"but got $inputDataType.")
     require(schema.fields.forall(_.name != outputColName),
       s"Output column $outputColName already exists.")
-    NominalAttribute.defaultAttr.withName($(outputCol)).toStructField()
+    NominalAttribute.defaultAttr.withName(outputColName).toStructField()
   }
 
   /** Validates and transforms the input schema. */
@@ -155,7 +156,6 @@ class StringIndexer @Since("1.4.0") (
   /** @group setParam */
   @Since("2.3.0")
   def setStringOrderType(value: String): this.type = set(stringOrderType, value)
-  setDefault(stringOrderType, StringIndexer.frequencyDesc)
 
   /** @group setParam */
   @Since("1.4.0")
@@ -412,7 +412,7 @@ class StringIndexerModel (
   override def transform(dataset: Dataset[_]): DataFrame = {
     transformSchema(dataset.schema, logging = true)
 
-    var (inputColNames, outputColNames) = getInOutCols()
+    val (inputColNames, outputColNames) = getInOutCols()
     val outputColumns = new Array[Column](outputColNames.length)
 
     // Skips invalid rows if `handleInvalid` is set to `StringIndexer.SKIP_INVALID`.
@@ -473,6 +473,14 @@ class StringIndexerModel (
 
   @Since("1.6.0")
   override def write: StringIndexModelWriter = new StringIndexModelWriter(this)
+
+  @Since("3.0.0")
+  override def toString: String = {
+    s"StringIndexerModel: uid=$uid, handleInvalid=${$(handleInvalid)}" +
+      get(stringOrderType).map(t => s", stringOrderType=$t").getOrElse("") +
+      get(inputCols).map(c => s", numInputCols=${c.length}").getOrElse("") +
+      get(outputCols).map(c => s", numOutputCols=${c.length}").getOrElse("")
+  }
 }
 
 @Since("1.6.0")

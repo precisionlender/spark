@@ -24,7 +24,7 @@ import java.nio.file.{Files => JavaFiles}
 import java.nio.file.attribute.PosixFilePermission.{OWNER_EXECUTE, OWNER_READ, OWNER_WRITE}
 import java.security.SecureRandom
 import java.security.cert.X509Certificate
-import java.util.{Arrays, EnumSet, Properties}
+import java.util.{Arrays, EnumSet, Locale, Properties}
 import java.util.concurrent.{TimeoutException, TimeUnit}
 import java.util.jar.{JarEntry, JarOutputStream, Manifest}
 import javax.net.ssl._
@@ -179,11 +179,20 @@ private[spark] object TestUtils {
       destDir: File,
       toStringValue: String = "",
       baseClass: String = null,
-      classpathUrls: Seq[URL] = Seq.empty): File = {
+      classpathUrls: Seq[URL] = Seq.empty,
+      implementsClasses: Seq[String] = Seq.empty,
+      extraCodeBody: String = ""): File = {
     val extendsText = Option(baseClass).map { c => s" extends ${c}" }.getOrElse("")
+    val implementsText =
+      "implements " + (implementsClasses :+ "java.io.Serializable").mkString(", ")
     val sourceFile = new JavaSourceFromString(className,
-      "public class " + className + extendsText + " implements java.io.Serializable {" +
-      "  @Override public String toString() { return \"" + toStringValue + "\"; }}")
+      s"""
+         |public class $className $extendsText $implementsText {
+         |  @Override public String toString() { return "$toStringValue"; }
+         |
+         |  $extraCodeBody
+         |}
+        """.stripMargin)
     createCompiledClass(className, destDir, sourceFile, classpathUrls)
   }
 
@@ -214,12 +223,20 @@ private[spark] object TestUtils {
    * Asserts that exception message contains the message. Please note this checks all
    * exceptions in the tree.
    */
-  def assertExceptionMsg(exception: Throwable, msg: String): Unit = {
+  def assertExceptionMsg(exception: Throwable, msg: String, ignoreCase: Boolean = false): Unit = {
+    def contain(msg1: String, msg2: String): Boolean = {
+      if (ignoreCase) {
+        msg1.toLowerCase(Locale.ROOT).contains(msg2.toLowerCase(Locale.ROOT))
+      } else {
+        msg1.contains(msg2)
+      }
+    }
+
     var e = exception
-    var contains = e.getMessage.contains(msg)
+    var contains = contain(e.getMessage, msg)
     while (e.getCause != null && !contains) {
       e = e.getCause
-      contains = e.getMessage.contains(msg)
+      contains = contain(e.getMessage, msg)
     }
     assert(contains, s"Exception tree doesn't contain the expected message: $msg")
   }
@@ -228,7 +245,13 @@ private[spark] object TestUtils {
    * Test if a command is available.
    */
   def testCommandAvailable(command: String): Boolean = {
-    val attempt = Try(Process(command).run(ProcessLogger(_ => ())).exitValue())
+    val attempt = if (Utils.isWindows) {
+      Try(Process(Seq(
+        "cmd.exe", "/C", s"where $command")).run(ProcessLogger(_ => ())).exitValue())
+    } else {
+      Try(Process(Seq(
+        "sh", "-c", s"command -v $command")).run(ProcessLogger(_ => ())).exitValue())
+    }
     attempt.isSuccess && attempt.get == 0
   }
 
@@ -239,6 +262,16 @@ private[spark] object TestUtils {
       url: URL,
       method: String = "GET",
       headers: Seq[(String, String)] = Nil): Int = {
+    withHttpConnection(url, method, headers = headers) { connection =>
+      connection.getResponseCode()
+    }
+  }
+
+  def withHttpConnection[T](
+      url: URL,
+      method: String = "GET",
+      headers: Seq[(String, String)] = Nil)
+      (fn: HttpURLConnection => T): T = {
     val connection = url.openConnection().asInstanceOf[HttpURLConnection]
     connection.setRequestMethod(method)
     headers.foreach { case (k, v) => connection.setRequestProperty(k, v) }
@@ -263,7 +296,7 @@ private[spark] object TestUtils {
 
     try {
       connection.connect()
-      connection.getResponseCode()
+      fn(connection)
     } finally {
       connection.disconnect()
     }

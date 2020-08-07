@@ -53,8 +53,6 @@ private[ml] trait OneHotEncoderBase extends Params with HasHandleInvalid
     "during fitting, invalid data will result in an error.",
     ParamValidators.inArray(OneHotEncoder.supportedHandleInvalids))
 
-  setDefault(handleInvalid, OneHotEncoder.ERROR_INVALID)
-
   /**
    * Whether to drop the last category in the encoded vector (default: true)
    * @group param
@@ -62,11 +60,12 @@ private[ml] trait OneHotEncoderBase extends Params with HasHandleInvalid
   @Since("2.3.0")
   final val dropLast: BooleanParam =
     new BooleanParam(this, "dropLast", "whether to drop the last category")
-  setDefault(dropLast -> true)
 
   /** @group getParam */
   @Since("2.3.0")
   def getDropLast: Boolean = $(dropLast)
+
+  setDefault(handleInvalid -> OneHotEncoder.ERROR_INVALID, dropLast -> true)
 
   /** Returns the input and output column names corresponding in pair. */
   private[feature] def getInOutCols(): (Array[String], Array[String]) = {
@@ -282,10 +281,18 @@ class OneHotEncoderModel private[ml] (
       if (idx < size) {
         Vectors.sparse(size, Array(idx.toInt), Array(1.0))
       } else {
-        Vectors.sparse(size, Array.empty[Int], Array.empty[Double])
+        Vectors.sparse(size, Array.emptyIntArray, Array.emptyDoubleArray)
       }
     }
   }
+
+  /** @group setParam */
+  @Since("3.0.0")
+  def setInputCol(value: String): this.type = set(inputCol, value)
+
+  /** @group setParam */
+  @Since("3.0.0")
+  def setOutputCol(value: String): this.type = set(outputCol, value)
 
   /** @group setParam */
   @Since("3.0.0")
@@ -376,6 +383,13 @@ class OneHotEncoderModel private[ml] (
 
   @Since("3.0.0")
   override def write: MLWriter = new OneHotEncoderModelWriter(this)
+
+  @Since("3.0.0")
+  override def toString: String = {
+    s"OneHotEncoderModel: uid=$uid, dropLast=${$(dropLast)}, handleInvalid=${$(handleInvalid)}" +
+      get(inputCols).map(c => s", numInputCols=${c.length}").getOrElse("") +
+      get(outputCols).map(c => s", numOutputCols=${c.length}").getOrElse("")
+  }
 }
 
 @Since("3.0.0")

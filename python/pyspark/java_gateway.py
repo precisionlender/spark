@@ -17,7 +17,6 @@
 
 import atexit
 import os
-import sys
 import signal
 import shlex
 import shutil
@@ -27,13 +26,10 @@ import tempfile
 import time
 from subprocess import Popen, PIPE
 
-if sys.version >= '3':
-    xrange = range
-
 from py4j.java_gateway import java_import, JavaGateway, JavaObject, GatewayParameters
+from py4j.clientserver import ClientServer, JavaParameters, PythonParameters
 from pyspark.find_spark_home import _find_spark_home
 from pyspark.serializers import read_int, write_with_length, UTF8Deserializer
-from pyspark.util import _exception_message
 
 
 def launch_gateway(conf=None, popen_kwargs=None):
@@ -125,10 +121,23 @@ def launch_gateway(conf=None, popen_kwargs=None):
                 Popen(["cmd", "/c", "taskkill", "/f", "/t", "/pid", str(proc.pid)])
             atexit.register(killChild)
 
-    # Connect to the gateway
-    gateway = JavaGateway(
-        gateway_parameters=GatewayParameters(port=gateway_port, auth_token=gateway_secret,
-                                             auto_convert=True))
+    # Connect to the gateway (or client server to pin the thread between JVM and Python)
+    if os.environ.get("PYSPARK_PIN_THREAD", "false").lower() == "true":
+        gateway = ClientServer(
+            java_parameters=JavaParameters(
+                port=gateway_port,
+                auth_token=gateway_secret,
+                auto_convert=True),
+            python_parameters=PythonParameters(
+                port=0,
+                eager_load=False))
+    else:
+        gateway = JavaGateway(
+            gateway_parameters=GatewayParameters(
+                port=gateway_port,
+                auth_token=gateway_secret,
+                auto_convert=True))
+
     # Store a reference to the Popen object for use by the caller (e.g., in reading stdout/stderr)
     gateway.proc = proc
 
@@ -138,6 +147,7 @@ def launch_gateway(conf=None, popen_kwargs=None):
     java_import(gateway.jvm, "org.apache.spark.api.python.*")
     java_import(gateway.jvm, "org.apache.spark.ml.python.*")
     java_import(gateway.jvm, "org.apache.spark.mllib.api.python.*")
+    java_import(gateway.jvm, "org.apache.spark.resource.*")
     # TODO(davies): move into sql
     java_import(gateway.jvm, "org.apache.spark.sql.*")
     java_import(gateway.jvm, "org.apache.spark.sql.api.python.*")
@@ -182,7 +192,7 @@ def local_connect_and_auth(port, auth_secret):
             _do_server_auth(sockfile, auth_secret)
             return (sockfile, sock)
         except socket.error as e:
-            emsg = _exception_message(e)
+            emsg = str(e)
             errors.append("tried to connect to %s, but an error occured: %s" % (sa, emsg))
             sock.close()
             sock = None
