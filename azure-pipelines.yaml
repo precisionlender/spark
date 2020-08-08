@@ -22,8 +22,9 @@ stages:
         - bash: |
             set -e
 
-            echo $(ls .)
+            ls -al .
             dev/make-distribution.sh --tgz -Phadoop-cloud -Phadoop-3.2 -Pkubernetes -DskipTests
+            ls -al .
           displayName: 'Build: Spark'
         - task: PublishPipelineArtifact@1
           displayName: 'Publish Artifact: Spark'
