@@ -16,13 +16,14 @@ stages:
     jobs:
     - job: build
       steps:
-        - task: Maven@3
-          inputs:
-            mavenOptions: '-Xmx2g -XX:ReservedCodeCacheSize=1g'
+        # - task: Maven@3
+        #   inputs:
+        #     mavenOptions: '-Xmx2g -XX:ReservedCodeCacheSize=1g'
         - bash: |
             set -e
 
             echo $(ls .)
+            dev/make-distribution.sh --pip --r --tgz -Psparkr -Phadoop-cloud -Pkubernetes
           displayName: 'Build: Spark'
         - task: PublishPipelineArtifact@1
           displayName: 'Publish Artifact: Spark'
