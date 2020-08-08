@@ -1,0 +1,31 @@
+name: spark-build
+
+variables:
+  ROOT: src
+  ARTIFACT_NAME: artifact
+
+trigger: none
+pr: none
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+stages:
+  - stage: build
+    displayName: 'Build Spark'
+    jobs:
+    - job: build
+      steps:
+        - task: Maven@3
+          inputs:
+            mavenOptions: '-Xmx2g -XX:ReservedCodeCacheSize=1g'
+        - bash: |
+            set -e
+
+            echo $(ls .)
+          displayName: 'Build: Spark'
+        - task: PublishPipelineArtifact@1
+          displayName: 'Publish Artifact: Spark'
+          inputs:
+            targetPath: $(System.DefaultWorkingDirectory)/$(ROOT)
+            artifactName: $(ARTIFACT_NAME)
